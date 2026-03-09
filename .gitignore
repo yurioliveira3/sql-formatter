@@ -1,7 +1,7 @@
-# PyInstaller
-dist/
-build/
-*.spec
+# PyInstaller (Python)
+python/dist/
+python/build/
+python/*.spec
 
 # Python
 __pycache__/
@@ -10,6 +10,10 @@ __pycache__/
 
 # Pytest
 .pytest_cache/
+
+# Go build output
+go/dist/
+*.exe
 
 # Notas pessoais locais
 path.md
