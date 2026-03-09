@@ -31,12 +31,29 @@ aplicar fallback (pass-through), igual ao que o Python faz hoje quando sqlglot f
 
 ---
 
+## Abordagem: TDD
+
+Cada fase segue o ciclo Red → Green → Refactor:
+1. Escrever os testes primeiro (falham — Red)
+2. Implementar o minimo para os testes passarem (Green)
+3. Refatorar se necessario, mantendo os testes verdes
+
+O `python/test_format_sql.py` e lido como referencia de comportamento esperado,
+nao como limite de cobertura. A suite Go deve:
+- Cobrir todos os comportamentos ja validados pelo pytest (mesma logica, inputs equivalentes)
+- Adicionar casos novos para cenarios nao cobertos, edge cases e combinacoes mais complexas
+
+O objetivo e ter uma suite Go mais completa do que a Python, nao uma copia dela.
+
+---
+
 ## Fases de implementacao
 
 ### Fase 1 — Skeleton do projeto Go
 
 **Entregavel:** binario que le stdin e escreve stdout sem processar.
 
+Nao ha logica a testar nesta fase — apenas infraestrutura:
 - `go mod init github.com/yurioliveira3/sql-formatter`
 - `main.go` com leitura de `os.Stdin` e escrita em `os.Stdout`
 - `go build -o format_sql_ansi.exe .`
@@ -48,83 +65,69 @@ Arquivos criados: `go.mod`, `main.go`
 
 ### Fase 2 — Utilitarios e funcoes simples
 
-**Entregavel:** funcoes sem dependencias externas portadas, com testes unitarios.
+**Ciclo TDD:**
+1. Ler `python/test_format_sql.py` como referencia de comportamento
+2. Escrever `pipeline/utils_test.go` e `pipeline/merge_test.go` cobrindo os casos existentes e adicionando novos (inputs vazios, multiplos `;`, MERGE com variantes nao testadas no Python, etc.)
+3. `go test ./pipeline/...` → falha (funcoes nao existem)
+4. Implementar `pipeline/utils.go` e `pipeline/merge.go`
+5. `go test ./pipeline/...` → verde
 
-Funcoes a portar de `format_sql_ansi.py`:
-- `strip_trailing_semicolons` — regex simples
-- `finalize` — adiciona `;\n`
-- `is_merge` — regex match
-- `apply_limit_layout` — regex substitution
-- `apply_merge_layout` — iteracao linha a linha com regex
-
-Todas as regex pre-compiladas como `var` no nivel de pacote (igual ao Python).
-
-Arquivos: `pipeline/utils.go`, `pipeline/merge.go`, com testes `*_test.go`.
+Funcoes cobertas:
+- `strip_trailing_semicolons`
+- `finalize`
+- `is_merge`
+- `apply_limit_layout`
+- `apply_merge_layout`
 
 ---
 
 ### Fase 3 — Layout FROM/JOIN
 
-**Entregavel:** `apply_from_join_layout` portada com contagem de parenteses.
-
-Logica critica:
-- `FROM <tabela>` → `FROM\n\t<tabela>`
-- `JOIN <tabela>` → `JOIN\n\t<tabela> ON ...`
-- Acoplar linhas `ON` soltas (loop com contagem de profundidade de parenteses)
-- Preservar indentacao de subqueries
-
-Arquivos: `pipeline/layout.go`, `pipeline/layout_test.go`
+**Ciclo TDD:**
+1. Ler os casos de `apply_from_join_layout` em `python/test_format_sql.py` como referencia
+2. Escrever `pipeline/layout_test.go` cobrindo os casos existentes e adicionando novos (multiplos JOINs, FROM em subquery aninhada, ON com expressoes complexas, etc.)
+3. `go test ./pipeline/...` → falha
+4. Implementar `pipeline/layout.go`
+5. `go test ./pipeline/...` → verde
 
 ---
 
 ### Fase 4 — Substituicao do sqlglot (ponto critico)
 
-**Entregavel:** funcao `formatSQL(sql string) string`.
-
-Estrategia concreta:
-1. Regex para keyword uppercasing das principais keywords SQL
-2. Normalizacao de `\r\n` → `\n`
-3. Passar pelo pipeline customizado
-4. Validar contra os testes — identificar gaps e ajustar iterativamente
-
-Arquivos: `pipeline/sqlformat.go`, `pipeline/sqlformat_test.go`
+**Ciclo TDD:**
+1. Escrever `pipeline/sqlformat_test.go` com SQLs de entrada (lowercase/misturado) e saida esperada (keywords uppercase, estrutura basica)
+2. `go test ./pipeline/...` → falha
+3. Implementar `pipeline/sqlformat.go`: regex de keyword uppercasing + normalizacao
+4. Iterar ate os testes passarem
 
 ---
 
 ### Fase 5 — Handling de comentarios
 
-**Entregavel:** ciclo completo de comentarios portado e testado.
-
-Funcoes a portar:
-- `preserve_block_comments` — substitui `/* */` originais por placeholders `/*__KEEP_n__*/`
-- `expand_block_comments` — 3 padroes:
-  - A: linha inteira de blocos → uma `--` por linha
-  - B: `AND/OR /* comment */ sql_real` → comentario vira `--` antes do AND
-  - C: `code /* c1 */ /* c2 */` (2+ blocos no final) → codigo + cada `--` em linha
-- `restore_block_comments` — restaura placeholders
-
-Em Go, os placeholders usam `map[string]string` retornado como segundo valor.
-
-Arquivos: `pipeline/comments.go`, `pipeline/comments_test.go`
+**Ciclo TDD:**
+1. Escrever `pipeline/comments_test.go` com os 3 padroes (A, B, C) + preserve/restore
+2. `go test ./pipeline/...` → falha
+3. Implementar `pipeline/comments.go`
+4. `go test ./pipeline/...` → verde
 
 ---
 
 ### Fase 6 — AND/OR layout e FILTER
 
-**Entregavel:** `apply_and_or_layout`, `merge_filter_clauses` e `remove_table_alias_as` portadas.
-
-- `split_top_level_and_or` — iteracao runa por runa com tracking de profundidade e strings
-- `apply_and_or_layout` — iteracao linha a linha
-- `merge_filter_clauses` — contagem de parenteses para reunir `FILTER(WHERE...)`
-- `remove_table_alias_as` — regex para remover `AS` de aliases de tabela (Oracle)
-
-Arquivos: `pipeline/conditions.go`, `pipeline/conditions_test.go`
+**Ciclo TDD:**
+1. Escrever `pipeline/conditions_test.go`: AND/OR top-level, dentro de parenteses, FILTER(WHERE...), remove AS de tabela
+2. `go test ./pipeline/...` → falha
+3. Implementar `pipeline/conditions.go`
+4. `go test ./pipeline/...` → verde
 
 ---
 
 ### Fase 7 — Integracao do pipeline em `main()`
 
-**Entregavel:** pipeline completo, equivalente ao Python.
+**Ciclo TDD:**
+1. Escrever `pipeline/integration_test.go` com os 50 casos do `test_format_sql.py` (input/output completos)
+2. `go test ./...` → falha (pipeline nao montado)
+3. Montar o pipeline em `main.go`:
 
 ```
 strip_trailing_semicolons
@@ -137,21 +140,11 @@ strip_trailing_semicolons
 → finalize
 ```
 
----
-
-### Fase 8 — Suite de testes de integracao
-
-**Entregavel:** suite Go equivalente ao `test_format_sql.py` (50 casos).
-
-- Testar funcoes diretamente via `testing` package
-- Prioridade: MERGE, comentarios, FROM/JOIN com ON multi-linha, FILTER(WHERE...)
-- Opcional: `exec.Command` no binario para testes end-to-end
-
-Arquivo: `pipeline/integration_test.go`
+4. `go test ./...` → verde
 
 ---
 
-### Fase 9 — Build, integracao com DBeaver e documentacao
+### Fase 8 — Build, integracao com DBeaver e documentacao
 
 **Entregavel:** substituicao do `.bat` e README atualizado.
 
