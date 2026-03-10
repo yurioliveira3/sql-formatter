@@ -80,7 +80,12 @@ py -3 -m pytest test_format_sql.py -v
 ```
 
 Tests use `subprocess` to call the script via `sys.executable`, so they test the full pipeline.
-Always run the test suite after modifying `python\format_sql_ansi.py`.
+
+**Regras obrigatórias para qualquer alteração no código Python:**
+
+1. Atualizar ou criar testes em `test_format_sql.py` que cubram o comportamento alterado.
+2. Rodar a suite completa e garantir que todos os testes passam antes de prosseguir.
+3. Após todos os testes passando, recriar o executável com PyInstaller (comando acima em "Build").
 
 ## Go implementation
 
@@ -100,6 +105,12 @@ go build -o dist\format_sql_ansi_go.exe .
 cd go
 go test ./...
 ```
+
+**Regras obrigatórias para qualquer alteração no código Go:**
+
+1. Atualizar ou criar testes que cubram o comportamento alterado.
+2. Rodar `go test ./...` e garantir que todos os testes passam antes de prosseguir.
+3. Após todos os testes passando, recriar o executável com `go build` (comando acima em "Build").
 
 ## Environment
 

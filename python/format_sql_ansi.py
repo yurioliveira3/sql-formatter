@@ -31,7 +31,7 @@ _INSERT_DELETE_RE = re.compile(r"^(INSERT|DELETE)\b", re.IGNORECASE)
 _WHERE_RE = re.compile(r"^WHERE\b", re.IGNORECASE)
 _FILTER_RE = re.compile(r"\bFILTER\s*\(", re.IGNORECASE)
 _LIMIT_RE = re.compile(r"^\s*LIMIT\s+([^\s;]+)\s*$", re.IGNORECASE | re.MULTILINE)
-_AND_OR_WORD_RE = re.compile(r"(AND|OR)\s", re.IGNORECASE)
+_AND_OR_WORD_RE = re.compile(r"\b(AND|OR)\s", re.IGNORECASE)
 _AND_OR_QUICK_RE = re.compile(r"\b(?:AND|OR)\s", re.IGNORECASE)
 _INDENT_RE = re.compile(r"^(\s*)")
 _BLOCK_COMMENTS_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -47,6 +47,7 @@ _FROM_JOIN_TABLE_AS_RE = re.compile(
     re.IGNORECASE,
 )
 _CLOSE_PAREN_AS_RE = re.compile(r"^(\s*\))\s+AS\s+(\w+)", re.IGNORECASE)
+_NOT_IS_NULL_RE = re.compile(r"\bNOT\s+(.+?)\s+IS\s+NULL\b", re.IGNORECASE)
 
 
 def strip_trailing_semicolons(sql: str) -> str:
@@ -238,12 +239,17 @@ def apply_and_or_layout(sql: str) -> str:
     Quebra condições AND/OR de nível superior em linhas próprias.
     Ex:  WHERE a = 1 AND b = 2  →  WHERE / <indent>a = 1 / <indent>AND b = 2
     Respeita parênteses e strings — não quebra dentro de ON (...) ou FILTER(...).
+    Linhas de comentário (--) nunca são quebradas.
     """
     lines = sql.split("\n")
     out = []
     for line in lines:
         # Short-circuit: ignora linhas sem AND/OR (a maioria das linhas)
         if not _AND_OR_QUICK_RE.search(line):
+            out.append(line)
+            continue
+        # Linhas de comentário -- nunca devem ser quebradas
+        if line.lstrip().startswith("--"):
             out.append(line)
             continue
         indent = _INDENT_RE.match(line).group(1)
@@ -395,6 +401,13 @@ def remove_table_alias_as(sql: str) -> str:
     return "\n".join(out)
 
 
+def fix_is_not_null(sql: str) -> str:
+    """
+    Reverte a transformação do sqlglot que converte IS NOT NULL para NOT <expr> IS NULL.
+    """
+    return _NOT_IS_NULL_RE.sub(lambda m: f"{m.group(1)} IS NOT NULL", sql)
+
+
 def try_sqlglot(sql: str) -> str | None:
     try:
         statements = sqlglot.transpile(sql, pretty=True)
@@ -426,7 +439,10 @@ def main():
         # 3) remove ; reinseridos pelo sqlglot antes de mexer em linhas
         base = strip_trailing_semicolons(base)
 
-        # 3b) remove AS de aliases de tabela (Oracle não aceita)
+        # 3b) reverte NOT <expr> IS NULL → <expr> IS NOT NULL
+        base = fix_is_not_null(base)
+
+        # 3d) remove AS de aliases de tabela (Oracle não aceita)
         base = remove_table_alias_as(base)
 
         # 4) reúne FILTER(WHERE ...) quebrados pelo sqlglot

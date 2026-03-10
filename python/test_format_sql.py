@@ -30,10 +30,12 @@ def fmt(sql: str) -> str:
 # Import individual functions for unit testing
 sys.path.insert(0, str(SCRIPT.parent))
 from format_sql_ansi import (
+    apply_and_or_layout,
     apply_from_join_layout,
     apply_limit_layout,
     apply_merge_layout,
     finalize,
+    fix_is_not_null,
     strip_trailing_semicolons,
 )
 
@@ -418,3 +420,68 @@ class TestSubquery:
         result = fmt(sql)
         assert "SELECT" in result
         assert result.strip().endswith(";")
+
+
+class TestFixIsNotNull:
+    def test_simple_column(self):
+        assert fix_is_not_null("NOT col IS NULL") == "col IS NOT NULL"
+
+    def test_qualified_column(self):
+        assert fix_is_not_null("NOT t.col IS NULL") == "t.col IS NOT NULL"
+
+    def test_quoted_column_with_space(self):
+        assert fix_is_not_null('NOT nfr."Nº Order" IS NULL') == 'nfr."Nº Order" IS NOT NULL'
+
+    def test_multiple_occurrences(self):
+        result = fix_is_not_null("NOT a IS NULL AND NOT b IS NULL")
+        assert result == "a IS NOT NULL AND b IS NOT NULL"
+
+    def test_no_change_when_already_correct(self):
+        sql = "col IS NOT NULL"
+        assert fix_is_not_null(sql) == sql
+
+    def test_full_pipeline_preserves_is_not_null(self):
+        sql = 'SELECT * FROM t WHERE t.col IS NOT NULL'
+        result = fmt(sql)
+        assert "IS NOT NULL" in result
+        assert "NOT t.col IS NULL" not in result
+
+
+class TestAndOrLayout:
+    def test_comment_line_with_and_not_split(self):
+        sql = "WHERE\n  a = 1\n  -- AND b = 2 -- comentario inline"
+        result = apply_and_or_layout(sql)
+        assert result == sql
+
+    def test_comment_line_with_or_not_split(self):
+        sql = "WHERE\n  a = 1\n  -- OR b = 2"
+        result = apply_and_or_layout(sql)
+        assert result == sql
+
+    def test_or_inside_word_not_split(self):
+        # "POR" contém "OR" mas não é um operador
+        sql = "  AND col = 'FILTRAR POR UM LOTE'"
+        result = apply_and_or_layout(sql)
+        assert "OR UM LOTE" not in result.split("\n")[-1] or result == sql
+
+    def test_full_pipeline_commented_and_preserved(self):
+        sql = """
+            SELECT a FROM t
+            WHERE x = 1
+            --  AND y = 2 -- FILTRAR POR LOTE
+            --  AND z = 3
+        """
+        result = fmt(sql)
+        lines = result.split("\n")
+        # nenhuma linha deve começar com OR isolado (seria produto de split incorreto)
+        assert not any(line.strip().startswith("OR ") or line.strip() == "OR" for line in lines)
+        assert "-- AND z = 3" in result
+
+    def test_full_pipeline_por_not_split(self):
+        sql = "SELECT * FROM t WHERE col = 'FILTRAR POR UM LOTE' AND other = 1"
+        result = fmt(sql)
+        lines = result.split("\n")
+        # "FILTRAR POR UM LOTE" deve estar intacto numa única linha
+        assert any("FILTRAR POR UM LOTE" in line for line in lines)
+        # OR não deve aparecer como início de linha separada
+        assert not any(line.strip().startswith("OR ") or line.strip() == "OR" for line in lines)
