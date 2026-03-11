@@ -3,7 +3,7 @@
 ## Project purpose
 
 External SQL formatter for DBeaver. Reads SQL from stdin, writes formatted SQL to stdout.
-Two independent implementations — Python (current) and Go (in progress).
+Two independent implementations — Python (current) and Go (functional).
 
 ## Directory structure
 
@@ -89,8 +89,25 @@ Tests use `subprocess` to call the script via `sys.executable`, so they test the
 
 ## Go implementation
 
-See `go/REWRITE_GO.md` for the full rewrite plan (9 phases).
-Entry point (futuro): `format_sql_ansi_go.bat` → `go\dist\format_sql_ansi_go.exe`
+Entry point: `format_sql_ansi_go.bat` → `go\dist\format_sql_ansi_go.exe`
+
+### Pipeline in `Format()` (`go/pipeline/pipeline.go`):
+1. `StripTrailingSemicolons` — normaliza entrada
+2. Branch em `IsMerge()`:
+   - **MERGE path**: `ApplyMergeLayout` → `ApplyFromJoinLayout`
+   - **Normal path**: `PreserveBlockComments` → `FormatSQL` → `StripTrailingSemicolons` → `FixIsNotNull` → `RemoveTableAliasAs` → `MergeFilterClauses` → `ExpandBlockComments` → `ConvertBlockToLineComments` → `RestoreBlockComments` → `ApplySelectLayout` → `ApplyAndOrLayout` → `ApplyWhereLayout` → `ApplyFromJoinLayout` → `ApplyOrderByLayout`
+3. `Finalize` — adiciona `;\n` no final
+
+### Output conventions (Go)
+
+- Keywords uppercase (FormatSQL com tokenizer próprio — sem sqlglot)
+- Cada cláusula SQL em linha própria
+- Tabela/valor após FROM, JOIN, LIMIT, ORDER BY, GROUP BY: próxima linha com 3 espaços
+- Colunas do SELECT: uma por linha com 3 espaços de indentação
+- Condições WHERE/HAVING: indentadas com 3 espaços; AND/OR incluídos na indentação
+- Comentários `--` preservados exatamente como escritos
+- Comentários `/* */` originais preservados via placeholders
+- Ponto-e-vírgula único em linha própria no final
 
 ### Build (Go)
 
