@@ -227,9 +227,14 @@ func TestApplySelectLayout(t *testing.T) {
 			want:  "SELECT\n   COUNT(*),\n   name",
 		},
 		{
-			name:  "SELECT sozinho com coluna única não é alterado",
+			name:  "SELECT sozinho com coluna única é indentado",
 			input: "SELECT\nid",
-			want:  "SELECT\nid",
+			want:  "SELECT\n   id",
+		},
+		{
+			name:  "SELECT sozinho com asterisco é indentado",
+			input: "SELECT\n*",
+			want:  "SELECT\n   *",
 		},
 		{
 			name:  "indentação do SELECT é preservada",
@@ -285,6 +290,16 @@ func TestApplyWhereLayout(t *testing.T) {
 			name:  "WHERE já sozinho não é alterado",
 			input: "WHERE",
 			want:  "WHERE",
+		},
+		{
+			name:  "WHERE sozinho com condição na próxima linha é indentado",
+			input: "WHERE\nnfr.col <> 'x'",
+			want:  "WHERE\n   nfr.col <> 'x'",
+		},
+		{
+			name:  "WHERE sozinho com condição e AND/OR na próxima linha",
+			input: "WHERE\nactive = 1\nAND type = 'A'",
+			want:  "WHERE\n   active = 1\n   AND type = 'A'",
 		},
 		{
 			name:  "linha após WHERE que não é AND/OR interrompe o bloco",

@@ -160,6 +160,33 @@ func TestFormatSQL_ClauseBreaking(t *testing.T) {
 	}
 }
 
+// ── Operadores multi-caractere ────────────────────────────────────────────────
+
+func TestFormatSQL_MultiCharOperators(t *testing.T) {
+	cases := []struct {
+		name        string
+		input       string
+		mustContain []string
+	}{
+		{">=", "SELECT a FROM t WHERE x >= 10", []string{"x >= 10"}},
+		{"<=", "SELECT a FROM t WHERE x <= 10", []string{"x <= 10"}},
+		{"<>", "SELECT a FROM t WHERE x <> 'A'", []string{"x <> 'A'"}},
+		{"!=", "SELECT a FROM t WHERE x != 0", []string{"x != 0"}},
+		{"||", "SELECT a || b FROM t", []string{"a || b"}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := pipeline.FormatSQL(tc.input)
+			for _, s := range tc.mustContain {
+				if !strings.Contains(got, s) {
+					t.Errorf("output missing %q\ngot:\n%s", s, got)
+				}
+			}
+		})
+	}
+}
+
 // ── Subqueries ficam em uma linha (depth > 0) ─────────────────────────────────
 
 func TestFormatSQL_SubqueryNoBreak(t *testing.T) {

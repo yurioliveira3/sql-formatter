@@ -228,11 +228,12 @@ func ApplySelectLayout(sql string) string {
 			continue
 		}
 
-		// Padrão 2: SELECT sozinho, colunas na próxima linha
+		// Padrão 2: SELECT sozinho, colunas na próxima linha (uma ou mais)
 		if m := selectAloneRe.FindStringSubmatch(line); m != nil && i+1 < len(lines) {
 			lineIndent := m[1]
-			cols := splitTopLevelCommas(strings.TrimSpace(lines[i+1]))
-			if len(cols) > 1 {
+			nextContent := strings.TrimSpace(lines[i+1])
+			if nextContent != "" {
+				cols := splitTopLevelCommas(nextContent)
 				out = append(out, lineIndent+"SELECT")
 				condIndent := lineIndent + "   "
 				for j, col := range cols {
@@ -259,11 +260,13 @@ func ApplySelectLayout(sql string) string {
 
 var (
 	whereHavingContentRe = regexp.MustCompile(`(?i)^(\s*)(WHERE|HAVING)\s+(.+)$`)
+	whereHavingAloneRe   = regexp.MustCompile(`(?i)^(\s*)(WHERE|HAVING)\s*$`)
 	andOrLineRe          = regexp.MustCompile(`(?i)^(\s*)(AND|OR)\s+(.+)$`)
 )
 
 // ApplyWhereLayout coloca a primeira condição WHERE/HAVING e todos os AND/OR
 // subsequentes em linhas indentadas abaixo do keyword.
+// Suporta WHERE/HAVING na mesma linha ou sozinhos com condição na próxima linha.
 func ApplyWhereLayout(sql string) string {
 	lines := strings.Split(sql, "\n")
 	out := make([]string, 0, len(lines))
@@ -272,18 +275,26 @@ func ApplyWhereLayout(sql string) string {
 	for i < len(lines) {
 		line := lines[i]
 
-		m := whereHavingContentRe.FindStringSubmatch(line)
-		if m == nil {
+		var lineIndent, keyword, condition string
+
+		if m := whereHavingContentRe.FindStringSubmatch(line); m != nil {
+			// WHERE <condição> na mesma linha
+			lineIndent = m[1]
+			keyword = strings.ToUpper(m[2])
+			condition = strings.TrimSpace(m[3])
+		} else if m := whereHavingAloneRe.FindStringSubmatch(line); m != nil && i+1 < len(lines) {
+			// WHERE sozinho, condição na próxima linha
+			lineIndent = m[1]
+			keyword = strings.ToUpper(m[2])
+			i++
+			condition = strings.TrimSpace(lines[i])
+		} else {
 			out = append(out, line)
 			i++
 			continue
 		}
 
-		lineIndent := m[1]
-		keyword := strings.ToUpper(m[2])
-		condition := strings.TrimSpace(m[3])
 		condIndent := lineIndent + "   "
-
 		out = append(out, lineIndent+keyword)
 		out = append(out, condIndent+condition)
 		i++

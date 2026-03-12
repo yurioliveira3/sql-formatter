@@ -53,6 +53,26 @@ func TestApplyFromJoinLayout(t *testing.T) {
 			want:  "FROM",
 		},
 		{
+			name:  "FROM sozinho com tabela na próxima linha",
+			input: "FROM\nYURIALVES.TABLE nfr",
+			want:  "FROM\n   YURIALVES.TABLE nfr",
+		},
+		{
+			name:  "JOIN sozinho com tabela na próxima linha",
+			input: "JOIN\norders ON users.id = orders.user_id",
+			want:  "JOIN\n   orders ON users.id = orders.user_id",
+		},
+		{
+			name:  "JOIN sozinho com comentário e tabela na próxima linha",
+			input: "JOIN\n-- RP ORIGEM\nrse.TRSERP0 od_rp ON (od_rp.cd_rp = nfr.id)",
+			want:  "JOIN\n   -- RP ORIGEM\n   rse.TRSERP0 od_rp ON (od_rp.cd_rp = nfr.id)",
+		},
+		{
+			name:  "LEFT JOIN sozinho com comentário e tabela na próxima linha",
+			input: "LEFT JOIN\n-- RP DESTINO\nrse.TRSERP0 nw_rp ON (od_rp.OI_RP = nw_rp.OI_RP_ORI)",
+			want:  "LEFT JOIN\n   -- RP DESTINO\n   rse.TRSERP0 nw_rp ON (od_rp.OI_RP = nw_rp.OI_RP_ORI)",
+		},
+		{
 			name:  "loose ON line gets merged back",
 			input: "JOIN orders\n  ON users.id = orders.user_id",
 			want:  "JOIN\n   orders ON users.id = orders.user_id",

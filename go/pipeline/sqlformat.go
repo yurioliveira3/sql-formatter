@@ -177,6 +177,16 @@ func tokenize(sql string) []sqlTok {
 		case '(', ')', ',', '.', ';', '[', ']':
 			out = append(out, sqlTok{tkPunct, string(r)})
 		default:
+			// Operadores multi-caractere: >=, <=, <>, !=, ||, ::
+			if i+1 < n {
+				two := string(rs[i : i+2])
+				switch two {
+				case ">=", "<=", "<>", "!=", "||", "::", "=>":
+					out = append(out, sqlTok{tkOp, two})
+					i += 2
+					continue
+				}
+			}
 			out = append(out, sqlTok{tkOp, string(r)})
 		}
 		i++
