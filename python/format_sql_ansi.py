@@ -37,6 +37,11 @@ _INDENT_RE = re.compile(r"^(\s*)")
 _BLOCK_COMMENTS_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _BLOCK_RE = re.compile(r"/\*([^\n]*?)\*/")
 _KEEP_RE = re.compile(r"__KEEP_\d+__")
+_STANDALONE_COMMENT_RE = re.compile(r"^[ \t]*--[^\n]*$", re.MULTILINE)
+_LONE_JOIN_RE = re.compile(
+    r"^\s*(?:(?:LEFT|RIGHT|FULL|INNER|CROSS|NATURAL)\s+(?:OUTER\s+)?JOIN|JOIN)\s*$",
+    re.IGNORECASE,
+)
 _PURE_BLOCKS_RE = re.compile(r"^\s*(?:/\*[^\n]*?\*/\s*)+$")
 _AND_OR_BLOCKS_RE = re.compile(
     r"^(\s*)(AND|OR)\s+(/\*[^\n]*?\*/(?:\s*/\*[^\n]*?\*/)*)\s+(\S.*)$",
@@ -307,6 +312,67 @@ def preserve_block_comments(sql: str) -> tuple[str, dict]:
     return modified, placeholders
 
 
+def strip_join_comments(sql: str) -> tuple[str, list]:
+    """
+    Remove APENAS linhas -- que aparecem imediatamente após uma keyword JOIN
+    sozinha numa linha (ex: JOIN\\n-- RP ORIGEM\\ntabela ON ...).
+    sqlglot embute esses comentários no meio do identificador schema.tabela,
+    corrompendo o resultado.
+
+    Retorna (sql_modificado, [(comment_text, next_fragment)])
+    onde next_fragment é o início normalizado da próxima linha concreta.
+    """
+    lines = sql.split("\n")
+    stored = []
+    clean = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if (
+            line.strip().startswith("--")
+            and clean
+            and _LONE_JOIN_RE.match(clean[-1])
+        ):
+            # Find the next non-empty, non-comment line (the table name)
+            j = i + 1
+            while j < len(lines) and (
+                not lines[j].strip() or lines[j].strip().startswith("--")
+            ):
+                j += 1
+            next_fragment = " ".join(lines[j].split())[:30] if j < len(lines) else ""
+            stored.append((line.strip(), next_fragment))
+        else:
+            clean.append(line)
+        i += 1
+    return "\n".join(clean), stored
+
+
+def restore_standalone_comments(sql: str, stored: list) -> str:
+    """
+    Reinsere linhas -- de JOIN (removidas por strip_join_comments) antes da
+    linha da tabela correspondente. Usa o fragmento inicial da tabela como chave.
+    """
+    for comment, fragment in stored:
+        if not fragment:
+            continue
+        lines = sql.split("\n")
+        norm_frag = fragment[:20]
+        for i, line in enumerate(lines):
+            norm_line = " ".join(line.strip().split())
+            if norm_line.startswith(norm_frag):
+                # Copia a indentação da linha de referência
+                indent = ""
+                for ch in line:
+                    if ch in (" ", "\t"):
+                        indent += ch
+                    else:
+                        break
+                lines.insert(i, indent + comment)
+                sql = "\n".join(lines)
+                break
+    return sql
+
+
 def restore_block_comments(sql: str, placeholders: dict) -> str:
     """
     Restaura os /* */ originais a partir dos placeholders.
@@ -429,7 +495,10 @@ def main():
         base = apply_merge_layout(base)
         base = apply_from_join_layout(base)
     else:
-        # 1) preserva /* */ originais do usuário com placeholders
+        # 1a) remove linhas -- entre keyword JOIN e tabela (sqlglot as mangle)
+        base, standalone_comments = strip_join_comments(base)
+
+        # 1b) preserva /* */ originais do usuário com placeholders
         base, original_blocks = preserve_block_comments(base)
 
         # 2) formata com sqlglot
@@ -461,6 +530,9 @@ def main():
         # 8) aplica estilo FROM/JOIN/LIMIT
         base = apply_from_join_layout(base)
         base = apply_limit_layout(base)
+
+        # 9) reinsere linhas -- de JOIN removidas antes do sqlglot
+        base = restore_standalone_comments(base, standalone_comments)
 
     # garante 1 ';' no final
     sys.stdout.write(finalize(base))
