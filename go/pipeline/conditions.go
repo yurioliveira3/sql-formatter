@@ -228,23 +228,41 @@ func ApplySelectLayout(sql string) string {
 			continue
 		}
 
-		// Padrão 2: SELECT sozinho, colunas na próxima linha (uma ou mais)
+		// Padrão 2: SELECT sozinho, colunas nas próximas linhas (uma ou mais por linha)
 		if m := selectAloneRe.FindStringSubmatch(line); m != nil && i+1 < len(lines) {
 			lineIndent := m[1]
-			nextContent := strings.TrimSpace(lines[i+1])
-			if nextContent != "" {
-				cols := splitTopLevelCommas(nextContent)
+
+			// Coleta todas as linhas de colunas até encontrar nova cláusula ou linha vazia
+			var colParts []string
+			j := i + 1
+			for j < len(lines) {
+				next := lines[j]
+				if strings.TrimSpace(next) == "" || newClauseRe.MatchString(next) {
+					break
+				}
+				colParts = append(colParts, strings.TrimSpace(next))
+				j++
+			}
+
+			if len(colParts) > 0 {
+				cols := splitTopLevelCommas(strings.Join(colParts, " "))
 				out = append(out, lineIndent+"SELECT")
 				condIndent := lineIndent + "   "
-				for j, col := range cols {
+				for _, col := range cols {
 					col = strings.TrimSpace(col)
-					if j < len(cols)-1 {
-						out = append(out, condIndent+col+",")
-					} else {
-						out = append(out, condIndent+col)
+					if col == "" {
+						continue // ignora partes vazias de vírgulas finais
+					}
+					out = append(out, condIndent+col+",")
+				}
+				// Remove a vírgula da última coluna
+				if len(out) > 0 {
+					last := out[len(out)-1]
+					if strings.HasSuffix(last, ",") {
+						out[len(out)-1] = last[:len(last)-1]
 					}
 				}
-				i += 2 // consome a linha SELECT e a linha de colunas
+				i = j
 				continue
 			}
 		}

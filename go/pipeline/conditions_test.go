@@ -241,6 +241,16 @@ func TestApplySelectLayout(t *testing.T) {
 			input: "  SELECT id, name",
 			want:  "  SELECT\n     id,\n     name",
 		},
+		{
+			name:  "SELECT sozinho com colunas já em linhas separadas (idempotência)",
+			input: "SELECT\nCOUNT(*) FILTER (WHERE li.id IS NULL) AS orders_sem_line_items,\nname",
+			want:  "SELECT\n   COUNT(*) FILTER (WHERE li.id IS NULL) AS orders_sem_line_items,\n   name",
+		},
+		{
+			name:  "SELECT sozinho para no FROM",
+			input: "SELECT\ncol1,\ncol2\nFROM\n   t",
+			want:  "SELECT\n   col1,\n   col2\nFROM\n   t",
+		},
 	}
 
 	for _, tc := range cases {
