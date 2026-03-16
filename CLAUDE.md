@@ -14,16 +14,16 @@ sql-formatter/
     test_format_sql.py       # pytest suite
     dist/                    # gerado por PyInstaller (nao commitado)
     build/                   # gerado por PyInstaller (nao commitado)
-  go/                        # implementacao Go (em desenvolvimento)
+  go/                        # implementacao Go
     main.go
     go.mod
-    pipeline/
-  format_sql_ansi.bat        # entry point DBeaver → Python exe
-  format_sql_ansi_go.bat     # entry point DBeaver → Go exe (futuro)
+    pipeline/                # pipeline + testes
+    dist/                    # binarios gerados (nao commitados)
+  format_sql_ansi.bat        # entry point DBeaver → Python exe (Windows)
+  format_sql_ansi_go.bat     # entry point DBeaver → Go (Windows)
+  format_sql_ansi_go.sh      # entry point DBeaver → Go (Mac/Linux)
   README.md
   CLAUDE.md
-  go/
-    REWRITE_GO.md            # plano de reescrita Go
   .gitignore
 ```
 
@@ -113,8 +113,14 @@ Entry point: `format_sql_ansi_go.bat` → `go\dist\format_sql_ansi_go.exe`
 
 ```bat
 cd go
-go build -o dist\format_sql_ansi_go.exe .
+go build -o dist\format_sql_ansi_go.exe .    # Windows
+go build -o dist/format_sql_ansi_go .        # Mac/Linux
+
+# Cross-compile para Windows a partir do Mac:
+GOOS=windows GOARCH=amd64 go build -o dist/format_sql_ansi_go.exe .
 ```
+
+> **Sem executável:** é possível chamar `go run` diretamente no `.bat` (sem build prévio), mas adiciona ~1–2 s de delay por execução. Prefira o `.exe` para uso constante no DBeaver.
 
 ### Testing (Go)
 

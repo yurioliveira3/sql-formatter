@@ -70,6 +70,13 @@ echo "SELECT id FROM users WHERE active = 1" | ./dist/format_sql_ansi_go
 
 Configure DBeaver: **Window → Preferences → Editors → External Formatters** → point to the script above (full path).
 
+> **Atenção — Windows sem executável compilado:** se não quiser gerar o `.exe`, edite `format_sql_ansi_go.bat` para chamar `go run` diretamente:
+> ```bat
+> @echo off
+> go run "C:\projects\sql-formatter\go\main.go"
+> ```
+> Isso funciona sem build prévio, mas adiciona ~1–2 s de delay por execução (tempo de compilação JIT do Go). Para uso constante, prefira o `.exe`.
+
 ---
 
 ## Python implementation
