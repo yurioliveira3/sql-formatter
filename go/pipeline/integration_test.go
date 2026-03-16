@@ -374,6 +374,75 @@ func TestIntegration_AndOrLayout(t *testing.T) {
 	})
 }
 
+// ── TestIdempotency ───────────────────────────────────────────────────────────
+
+// idempotent verifica que formatar duas vezes produz o mesmo resultado.
+func idempotent(t *testing.T, sql string) {
+	t.Helper()
+	first := fmt(sql)
+	second := pipeline.Format(first)
+	if first != second {
+		t.Errorf("não é idempotente:\n--- 1ª vez ---\n%s\n--- 2ª vez ---\n%s", first, second)
+	}
+}
+
+func TestIdempotency(t *testing.T) {
+	t.Run("SELECT com múltiplas colunas", func(t *testing.T) {
+		idempotent(t, "SELECT id, name, email FROM users")
+	})
+
+	t.Run("SELECT com FILTER e coluna extra", func(t *testing.T) {
+		idempotent(t, `
+			SELECT
+			   COUNT(DISTINCT o.id) FILTER (WHERE li.id IS NULL) AS orders_sem_line_items,
+			   name
+			FROM users
+		`)
+	})
+
+	t.Run("ORDER BY simples", func(t *testing.T) {
+		idempotent(t, "SELECT id FROM users ORDER BY name ASC")
+	})
+
+	t.Run("ORDER BY múltiplas colunas", func(t *testing.T) {
+		idempotent(t, "SELECT id, name FROM users ORDER BY name ASC, id DESC")
+	})
+
+	t.Run("GROUP BY", func(t *testing.T) {
+		idempotent(t, "SELECT status, COUNT(*) FROM orders GROUP BY status")
+	})
+
+	t.Run("LIMIT", func(t *testing.T) {
+		idempotent(t, "SELECT id FROM users LIMIT 10")
+	})
+
+	t.Run("WHERE com AND", func(t *testing.T) {
+		idempotent(t, "SELECT id FROM users WHERE active = 1 AND role = 'admin'")
+	})
+
+	t.Run("query completa do usuário", func(t *testing.T) {
+		idempotent(t, `
+			SELECT
+			   COUNT(DISTINCT o.id) FILTER (WHERE li.id IS NULL) AS orders_sem_line_items,
+			   name
+			FROM users
+			INNER JOIN orders ON users.id = orders.user_id
+			JOIN orders ON users.id = orders.user_id
+			LEFT JOIN items ON items.order_id = orders.id
+			WHERE active = 1
+			LIMIT 10
+		`)
+	})
+
+	t.Run("ORDER BY com LIMIT", func(t *testing.T) {
+		idempotent(t, "SELECT id, name FROM users WHERE active = 1 ORDER BY name ASC LIMIT 20")
+	})
+
+	t.Run("GROUP BY com HAVING", func(t *testing.T) {
+		idempotent(t, "SELECT status, COUNT(*) cnt FROM orders GROUP BY status HAVING COUNT(*) > 5")
+	})
+}
+
 // ── helpers de assert ─────────────────────────────────────────────────────────
 
 func assertContains(t *testing.T, result, sub string) {
